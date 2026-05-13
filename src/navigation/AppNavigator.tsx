@@ -10,6 +10,8 @@ import ClientsScreen from '../screens/ClientsScreen';
 import SuppliersScreen from '../screens/SuppliersScreen';
 import ReportsScreen from '../screens/ReportsScreen';
 import ProjectDetailsScreen from '../screens/ProjectDetailsScreen';
+import ClientDetailsScreen from '../screens/ClientDetailsScreen';
+import SupplierDetailsScreen from '../screens/SupplierDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -73,6 +75,8 @@ export default function AppNavigator() {
             <Stack.Screen name="Suppliers" component={SuppliersScreen} />
             <Stack.Screen name="Reports" component={ReportsScreen} />
             <Stack.Screen name="ProjectDetails" component={ProjectDetailsScreen} options={{ title: 'Project Details' }} />
+            <Stack.Screen name="ClientDetails" component={ClientDetailsScreen} />
+            <Stack.Screen name="SupplierDetails" component={SupplierDetailsScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -1,16 +1,24 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, SegmentedButtons, ActivityIndicator, FAB, Modal, Portal, TextInput, Button } from 'react-native-paper';
 import { supabase } from '../services/supabase';
 import { Project, ClientProduct, SupplierProduct, Supplier } from '../types/database';
 import DatePicker from '../components/DatePicker';
 import { Picker } from '@react-native-picker/picker';
+import { useNavigation } from '@react-navigation/native';
 
 import ProductLedgerCard from '../components/ProductLedgerCard';
 
 export default function ProjectDetailsScreen({ route }: any) {
+  const navigation = useNavigation<any>();
   const { projectId, project } = route.params as { projectId: string; project: Project };
   const [section, setSection] = useState('client');
+  const [currentProject, setCurrentProject] = useState(route.params.project as Project);
+  const [editProjectVisible, setEditProjectVisible] = useState(false);
+  const [editProjectName, setEditProjectName] = useState(currentProject.name);
+  const [editProjectIdentifier, setEditProjectIdentifier] = useState(currentProject.project_identifier || '');
+  const [editProjectDesc, setEditProjectDesc] = useState(currentProject.description || '');
+  const [editProjectNotes, setEditProjectNotes] = useState(currentProject.notes || '');
   const [loading, setLoading] = useState(true);
   
   const [clientProducts, setClientProducts] = useState<ClientProduct[]>([]);
@@ -31,7 +39,28 @@ export default function ProjectDetailsScreen({ route }: any) {
 
   useEffect(() => {
     fetchData();
-  }, [projectId]);
+    navigation.setOptions({
+      headerRight: () => (
+        <Button onPress={() => setEditProjectVisible(true)}>Edit</Button>
+      )
+    });
+  }, [projectId, navigation]);
+
+  const handleUpdateProject = async () => {
+    setSaving(true);
+    const { error } = await supabase.from('projects').update({
+      name: editProjectName,
+      project_identifier: editProjectIdentifier || null,
+      description: editProjectDesc || null,
+      notes: editProjectNotes || null
+    }).eq('id', projectId);
+    setSaving(false);
+    if (error) alert('Error updating project');
+    else {
+      setCurrentProject({...currentProject, name: editProjectName, project_identifier: editProjectIdentifier, description: editProjectDesc, notes: editProjectNotes});
+      setEditProjectVisible(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -113,7 +142,7 @@ export default function ProjectDetailsScreen({ route }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text variant="titleMedium" style={styles.projectTitle}>{project.name}</Text>
+        <Text variant="titleMedium" style={styles.projectTitle}>{currentProject.name}</Text>
         <SegmentedButtons
           value={section}
           onValueChange={setSection}
@@ -223,6 +252,21 @@ export default function ProjectDetailsScreen({ route }: any) {
             </Button>
           </View>
         </Modal>
+
+        <Modal visible={editProjectVisible} onDismiss={() => setEditProjectVisible(false)} contentContainerStyle={styles.modalStyle}>
+          <Text variant="titleLarge" style={styles.modalTitle}>Edit Project</Text>
+          <ScrollView>
+            <TextInput label="Project Name *" value={editProjectName} onChangeText={setEditProjectName} mode="outlined" style={styles.input} />
+            <TextInput label="Project ID" value={editProjectIdentifier} onChangeText={setEditProjectIdentifier} mode="outlined" style={styles.input} />
+            <TextInput label="Description" value={editProjectDesc} onChangeText={setEditProjectDesc} mode="outlined" multiline numberOfLines={2} style={styles.input} />
+            <TextInput label="Notes" value={editProjectNotes} onChangeText={setEditProjectNotes} mode="outlined" multiline numberOfLines={2} style={styles.input} />
+          </ScrollView>
+          <View style={styles.modalActions}>
+            <Button onPress={() => setEditProjectVisible(false)}>Cancel</Button>
+            <Button mode="contained" onPress={handleUpdateProject} loading={saving}>Save</Button>
+          </View>
+        </Modal>
+
       </Portal>
 
       <FAB
@@ -273,3 +317,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   }
 });
+
+
+

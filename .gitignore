@@ -2,13 +2,13 @@
 
 # dependencies
 node_modules/
-
+graphify-out/
 # Expo
 .expo/
 dist/
 web-build/
 expo-env.d.ts
-
+.opencode
 # Native
 .kotlin/
 *.orig.*
@@ -20,7 +20,7 @@ expo-env.d.ts
 
 # Metro
 .metro-health-check*
-
+AGENTS.md
 # debug
 npm-debug.*
 yarn-debug.*

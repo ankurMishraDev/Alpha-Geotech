@@ -1,0 +1,322 @@
+import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import { Text, Card, ActivityIndicator, Modal, Portal, TextInput, Button, IconButton } from 'react-native-paper';
+import { supabase } from '../services/supabase';
+import { Supplier, Project } from '../types/database';
+import { useAppStore } from '../store/useAppStore';
+
+export default function SupplierDetailsScreen({ route, navigation }: any) {
+  const { supplier } = route.params;
+  const updateSupplierStore = useAppStore(state => state.updateSupplier);
+
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [remainingAmount, setRemainingAmount] = useState(0);
+
+  // Edit Modal State
+  const [visible, setVisible] = useState(false);
+  const [name, setName] = useState(supplier.name);
+  const [contactNumber, setContactNumber] = useState(supplier.contact_number || '');
+  const [address, setAddress] = useState(supplier.supplier_address || '');
+  const [email, setEmail] = useState(supplier.email || '');
+  const [saving, setSaving] = useState(false);
+
+  const [currentSupplier, setCurrentSupplier] = useState<Supplier>(supplier);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: currentSupplier.name,
+      headerRight: () => (
+        <IconButton
+          icon="pencil"
+          onPress={() => setVisible(true)}
+        />
+      ),
+    });
+  }, [navigation, currentSupplier]);
+
+  useEffect(() => {
+    fetchSupplierDetails();
+  }, [currentSupplier.id]);
+
+  const fetchSupplierDetails = async () => {
+    setLoading(true);
+    try {
+      // Fetch products for this supplier
+      const { data: productsData, error: prodError } = await supabase
+        .from('supplier_products')
+        .select('*')
+        .eq('supplier_id', currentSupplier.id);
+
+      if (prodError) throw prodError;
+      const products = productsData || [];
+      setTotalProducts(products.length);
+
+      if (products.length === 0) {
+        setProjects([]);
+        setRemainingAmount(0);
+        setLoading(false);
+        return;
+      }
+
+      // Unique project ids
+      const projectIds = Array.from(new Set(products.map(p => p.project_id)));
+
+      // Fetch projects
+      const { data: projectsData, error: projError } = await supabase
+        .from('projects')
+        .select('*')
+        .in('id', projectIds)
+        .order('created_at', { ascending: false });
+
+      if (projError) throw projError;
+      setProjects(projectsData || []);
+
+      const productIds = products.map(p => p.id);
+
+      // Fetch charges
+      const { data: chargesData, error: chargeError } = await supabase
+        .from('supplier_product_charges')
+        .select('*')
+        .in('supplier_product_id', productIds);
+
+      if (chargeError) throw chargeError;
+      const charges = chargesData || [];
+
+      // Fetch payments
+      const { data: paymentsData, error: payError } = await supabase
+        .from('supplier_product_payments')
+        .select('*')
+        .in('supplier_product_id', productIds);
+
+      if (payError) throw payError;
+      const payments = paymentsData || [];
+
+      // Calculate total remaining
+      let total = 0;
+      products.forEach(product => {
+        let productTotal = product.quantity * product.price;
+
+        const prodCharges = charges.filter(c => c.supplier_product_id === product.id);
+        prodCharges.forEach(c => {
+          if (c.operation === 'add') productTotal += c.amount;
+          if (c.operation === 'subtract') productTotal -= c.amount;
+        });
+
+        const prodPayments = payments.filter(p => p.supplier_product_id === product.id);
+        prodPayments.forEach(p => {
+          productTotal -= p.amount;
+        });
+
+        total += productTotal;
+      });
+
+      setRemainingAmount(total);
+
+    } catch (error) {
+      console.error('Error fetching supplier details:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Error', 'Supplier Name is required');
+      return;
+    }
+
+    setSaving(true);
+    const updates = {
+      name: name.trim(),
+      contact_number: contactNumber.trim() || null,
+      supplier_address: address.trim() || null,
+      email: email.trim() || null,
+    };
+
+    const { error } = await supabase
+      .from('suppliers')
+      .update(updates)
+      .eq('id', currentSupplier.id);
+
+    setSaving(false);
+
+    if (error) {
+      Alert.alert('Error', 'Failed to update supplier');
+      console.error(error);
+    } else {
+      const updatedSupplier = { ...currentSupplier, ...updates };
+      setCurrentSupplier(updatedSupplier);
+      updateSupplierStore(currentSupplier.id, updates);
+      setVisible(false);
+    }
+  };
+
+  const renderProject = ({ item }: { item: Project }) => (
+    <TouchableOpacity
+      onPress={() => navigation.navigate('ProjectDetails', { projectId: item.id, project: item })}
+    >
+      <Card style={styles.projectCard}>
+        <Card.Title 
+          title={item.name} 
+          subtitle={item.date ? new Date(item.date).toLocaleDateString() : 'No date'} 
+        />
+        <Card.Content>
+          {item.description ? <Text variant="bodyMedium" numberOfLines={2}>{item.description}</Text> : null}
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      <Card style={styles.summaryCard}>
+        <Card.Content>
+          <Text variant="titleMedium" style={styles.summaryTitle}>Summary</Text>
+          <View style={styles.summaryRow}>
+            <Text variant="bodyMedium">Projects Involved:</Text>
+            <Text variant="bodyLarge" style={styles.bold}>{projects.length}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text variant="bodyMedium">Total Products:</Text>
+            <Text variant="bodyLarge" style={styles.bold}>{totalProducts}</Text>
+          </View>
+          <Divider style={styles.divider} />
+          <View style={styles.summaryRow}>
+            <Text variant="titleMedium">Amount Payable:</Text>
+            <Text variant="titleLarge" style={[styles.bold, { color: remainingAmount > 0 ? '#d32f2f' : '#2e7d32' }]}>
+              ₹ {remainingAmount.toFixed(2)}
+            </Text>
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Text variant="titleLarge" style={styles.sectionTitle}>Projects</Text>
+
+      {loading ? (
+        <ActivityIndicator style={styles.loader} size="large" />
+      ) : (
+        <FlatList
+          data={projects}
+          keyExtractor={(item) => item.id}
+          renderItem={renderProject}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={<Text style={styles.emptyText}>No projects found for this supplier.</Text>}
+        />
+      )}
+
+      <Portal>
+        <Modal visible={visible} onDismiss={() => setVisible(false)} contentContainerStyle={styles.modalStyle}>
+          <Text variant="titleLarge" style={styles.modalTitle}>Edit Supplier</Text>
+          <TextInput
+            label="Supplier Name *"
+            value={name}
+            onChangeText={setName}
+            mode="outlined"
+            style={styles.input}
+          />
+          <TextInput
+            label="Contact Number"
+            value={contactNumber}
+            onChangeText={setContactNumber}
+            mode="outlined"
+            keyboardType="phone-pad"
+            style={styles.input}
+          />
+          <TextInput
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            mode="outlined"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+          <TextInput
+            label="Supplier Address"
+            value={address}
+            onChangeText={setAddress}
+            mode="outlined"
+            multiline
+            numberOfLines={3}
+            style={styles.input}
+          />
+          <View style={styles.modalActions}>
+            <Button onPress={() => setVisible(false)} disabled={saving}>Cancel</Button>
+            <Button mode="contained" onPress={handleSave} loading={saving}>Save</Button>
+          </View>
+        </Modal>
+      </Portal>
+    </View>
+  );
+}
+
+const Divider = ({ style }: any) => <View style={[{ height: 1, backgroundColor: '#e0e0e0' }, style]} />;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  summaryCard: {
+    margin: 16,
+    backgroundColor: 'white',
+  },
+  summaryTitle: {
+    marginBottom: 12,
+    fontWeight: 'bold',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  bold: {
+    fontWeight: 'bold',
+  },
+  divider: {
+    marginVertical: 12,
+  },
+  sectionTitle: {
+    marginLeft: 16,
+    marginBottom: 8,
+    fontWeight: 'bold',
+  },
+  listContainer: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  projectCard: {
+    marginBottom: 12,
+    backgroundColor: 'white',
+  },
+  loader: {
+    marginTop: 40,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 40,
+    color: '#666',
+  },
+  modalStyle: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
+    borderRadius: 8,
+  },
+  modalTitle: {
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  input: {
+    marginBottom: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
+  },
+});

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Card, Text, Button, Modal, Portal, TextInput, Divider, IconButton } from 'react-native-paper';
 import { Picker } from '@react-native-picker/picker';
 import { supabase } from '../services/supabase';
@@ -13,6 +13,10 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
   // Modal states
   const [chargeVisible, setChargeVisible] = useState(false);
   const [paymentVisible, setPaymentVisible] = useState(false);
+  const [editProductVisible, setEditProductVisible] = useState(false);
+  const [editChargeId, setEditChargeId] = useState<string | null>(null);
+  const [editPaymentId, setEditPaymentId] = useState<string | null>(null);
+  const [editProductData, setEditProductData] = useState({ date: new Date(), name: '', quantity: '', price: '', remarks: '' });
   const [saving, setSaving] = useState(false);
 
   // Form states
@@ -29,10 +33,8 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
   const [paymentMode, setPaymentMode] = useState('Bank');
 
   useEffect(() => {
-    if (expanded) {
-      fetchLedgerDetails();
-    }
-  }, [expanded]);
+    fetchLedgerDetails();
+  }, [product.id]);
 
   const fetchLedgerDetails = async () => {
     const chargeTable = type === 'client' ? 'client_product_charges' : 'supplier_product_charges';
@@ -57,14 +59,27 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
     const table = type === 'client' ? 'client_product_charges' : 'supplier_product_charges';
     const idField = type === 'client' ? 'client_product_id' : 'supplier_product_id';
 
-    const { error } = await supabase.from(table).insert([{
-      [idField]: product.id,
-      date: date.toISOString().split('T')[0],
-      operation,
-      charge_type: finalChargeType,
-      amount: parseFloat(amount),
-      notes: notes || null
-    }]);
+    let error;
+    if (editChargeId) {
+      const { error: updateErr } = await supabase.from(table).update({
+        date: date.toISOString().split('T')[0],
+        operation,
+        charge_type: finalChargeType,
+        amount: parseFloat(amount),
+        notes: notes || null
+      }).eq('id', editChargeId);
+      error = updateErr;
+    } else {
+      const { error: insErr } = await supabase.from(table).insert([{
+        [idField]: product.id,
+        date: date.toISOString().split('T')[0],
+        operation,
+        charge_type: finalChargeType,
+        amount: parseFloat(amount),
+        notes: notes || null
+      }]);
+      error = insErr;
+    }
 
     setSaving(false);
     if (!error) {
@@ -84,13 +99,25 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
     const table = type === 'client' ? 'client_product_payments' : 'supplier_product_payments';
     const idField = type === 'client' ? 'client_product_id' : 'supplier_product_id';
 
-    const { error } = await supabase.from(table).insert([{
-      [idField]: product.id,
-      date: date.toISOString().split('T')[0],
-      payment_mode: paymentMode,
-      amount: parseFloat(amount),
-      notes: notes || null
-    }]);
+    let error;
+    if (editPaymentId) {
+      const { error: updateErr } = await supabase.from(table).update({
+        date: date.toISOString().split('T')[0],
+        payment_mode: paymentMode,
+        amount: parseFloat(amount),
+        notes: notes || null
+      }).eq('id', editPaymentId);
+      error = updateErr;
+    } else {
+      const { error: insErr } = await supabase.from(table).insert([{
+        [idField]: product.id,
+        date: date.toISOString().split('T')[0],
+        payment_mode: paymentMode,
+        amount: parseFloat(amount),
+        notes: notes || null
+      }]);
+      error = insErr;
+    }
 
     setSaving(false);
     if (!error) {
@@ -103,6 +130,50 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
     }
   };
 
+  const handleDeleteCharge = (id: string) => {
+    Alert.alert('Delete Charge', 'Are you sure you want to delete this charge?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const table = type === 'client' ? 'client_product_charges' : 'supplier_product_charges';
+        await supabase.from(table).delete().eq('id', id);
+        fetchLedgerDetails();
+        onRefresh();
+      }}
+    ]);
+  };
+
+  const handleDeletePayment = (id: string) => {
+    Alert.alert('Delete Payment', 'Are you sure you want to delete this payment?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const table = type === 'client' ? 'client_product_payments' : 'supplier_product_payments';
+        await supabase.from(table).delete().eq('id', id);
+        fetchLedgerDetails();
+        onRefresh();
+      }}
+    ]);
+  };
+
+  const handleEditProduct = async () => {
+    setSaving(true);
+    const table = type === 'client' ? 'client_products' : 'supplier_products';
+    const { error } = await supabase.from(table).update({
+      date: editProductData.date.toISOString().split('T')[0],
+      name: editProductData.name,
+      quantity: parseFloat(editProductData.quantity),
+      price: parseFloat(editProductData.price),
+      remarks: editProductData.remarks
+    }).eq('id', product.id);
+    
+    setSaving(false);
+    if (!error) {
+      setEditProductVisible(false);
+      onRefresh(); // this will refresh the parent
+    } else {
+      Alert.alert('Error', 'Failed to update product');
+    }
+  };
+
   const resetForms = () => {
     setDate(new Date());
     setAmount('');
@@ -111,6 +182,8 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
     setChargeType('GST');
     setCustomChargeType('');
     setPaymentMode('Bank');
+    setEditChargeId(null);
+    setEditPaymentId(null);
   };
 
   const baseTotal = product.quantity * product.price;
@@ -127,7 +200,26 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
         <Card.Title 
           title={`${product.name} (Qty: ${product.quantity})`} 
           subtitle={type === 'supplier' ? `Supplier: ${product.supplier?.name || 'Unknown'}` : `Date: ${product.date}`}
-          right={(props) => <IconButton {...props} icon={expanded ? "chevron-up" : "chevron-down"} />}
+          right={(props) => (
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <IconButton 
+                {...props} 
+                icon="pencil" 
+                onPress={(e) => { 
+                  e.stopPropagation(); 
+                  setEditProductData({ 
+                    date: product.date ? new Date(product.date) : new Date(), 
+                    name: product.name, 
+                    quantity: String(product.quantity), 
+                    price: String(product.price), 
+                    remarks: product.remarks || '' 
+                  }); 
+                  setEditProductVisible(true); 
+                }} 
+              />
+              <IconButton {...props} icon={expanded ? "chevron-up" : "chevron-down"} onPress={() => setExpanded(!expanded)} />
+            </View>
+          )}
         />
         <Card.Content>
           <View style={styles.summaryRow}>
@@ -147,10 +239,33 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
           </View>
           {charges.map(c => (
             <View key={c.id} style={styles.listItem}>
-              <Text>{c.date} - {c.charge_type}</Text>
-              <Text style={{color: c.operation === 'add' ? 'green' : 'red'}}>
-                {c.operation === 'add' ? '+' : '-'} ₹{c.amount}
-              </Text>
+              <View style={{flex: 1}}>
+                <Text>{c.date} - {c.charge_type}</Text>
+                <Text style={{color: c.operation === 'add' ? 'green' : 'red'}}>
+                  {c.operation === 'add' ? '+' : '-'} ₹{c.amount}
+                </Text>
+              </View>
+              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <IconButton icon="pencil" size={20} onPress={() => {
+                  setEditChargeId(c.id);
+                  setDate(new Date(c.date));
+                  setOperation(c.operation);
+                  
+                  const predefinedTypes = ['GST', 'TDS', 'Delay', 'Expenses'];
+                  if (predefinedTypes.includes(c.charge_type)) {
+                    setChargeType(c.charge_type);
+                    setCustomChargeType('');
+                  } else {
+                    setChargeType('Others');
+                    setCustomChargeType(c.charge_type);
+                  }
+                  
+                  setAmount(String(c.amount));
+                  setNotes(c.notes || '');
+                  setChargeVisible(true);
+                }} />
+                <IconButton icon="delete" size={20} iconColor="red" onPress={() => handleDeleteCharge(c.id)} />
+              </View>
             </View>
           ))}
           {charges.length === 0 && <Text style={styles.emptyItem}>No charges recorded</Text>}
@@ -162,8 +277,21 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
           </View>
           {payments.map(p => (
             <View key={p.id} style={styles.listItem}>
-              <Text>{p.date} - {p.payment_mode}</Text>
-              <Text style={{color: 'green'}}>₹{p.amount}</Text>
+              <View style={{flex: 1}}>
+                <Text>{p.date} - {p.payment_mode}</Text>
+                <Text style={{color: 'green'}}>₹{p.amount}</Text>
+              </View>
+              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <IconButton icon="pencil" size={20} onPress={() => {
+                  setEditPaymentId(p.id);
+                  setDate(new Date(p.date));
+                  setPaymentMode(p.payment_mode);
+                  setAmount(String(p.amount));
+                  setNotes(p.notes || '');
+                  setPaymentVisible(true);
+                }} />
+                <IconButton icon="delete" size={20} iconColor="red" onPress={() => handleDeletePayment(p.id)} />
+              </View>
             </View>
           ))}
           {payments.length === 0 && <Text style={styles.emptyItem}>No payments recorded</Text>}
@@ -177,9 +305,23 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
       )}
 
       <Portal>
+        {/* Edit Product Modal */}
+        <Modal visible={editProductVisible} onDismiss={() => setEditProductVisible(false)} contentContainerStyle={styles.modalStyle}>
+          <Text variant="titleLarge" style={styles.modalTitle}>Edit Product</Text>
+          <DatePicker label="Date *" value={editProductData.date} onChange={(d) => setEditProductData({...editProductData, date: d})} />
+          <TextInput label="Name *" value={editProductData.name} onChangeText={(t) => setEditProductData({...editProductData, name: t})} mode="outlined" style={styles.input} />
+          <TextInput label="Quantity *" value={editProductData.quantity} onChangeText={(t) => setEditProductData({...editProductData, quantity: t})} mode="outlined" keyboardType="numeric" style={styles.input} />
+          <TextInput label="Price *" value={editProductData.price} onChangeText={(t) => setEditProductData({...editProductData, price: t})} mode="outlined" keyboardType="numeric" style={styles.input} />
+          <TextInput label="Remarks" value={editProductData.remarks} onChangeText={(t) => setEditProductData({...editProductData, remarks: t})} mode="outlined" style={styles.input} />
+          <View style={styles.modalActions}>
+            <Button onPress={() => setEditProductVisible(false)}>Cancel</Button>
+            <Button mode="contained" onPress={handleEditProduct} loading={saving}>Save</Button>
+          </View>
+        </Modal>
+
         {/* Charge Modal */}
-        <Modal visible={chargeVisible} onDismiss={() => setChargeVisible(false)} contentContainerStyle={styles.modalStyle}>
-          <Text variant="titleLarge" style={styles.modalTitle}>Add Charge/Adjustment</Text>
+        <Modal visible={chargeVisible} onDismiss={() => { setChargeVisible(false); resetForms(); }} contentContainerStyle={styles.modalStyle}>
+          <Text variant="titleLarge" style={styles.modalTitle}>{editChargeId ? 'Edit Charge/Adjustment' : 'Add Charge/Adjustment'}</Text>
           <DatePicker label="Date *" value={date} onChange={setDate} />
           
           <View style={{flexDirection: 'row', gap: 8}}>
@@ -216,8 +358,8 @@ export default function ProductLedgerCard({ product, type, onRefresh }: any) {
         </Modal>
 
         {/* Payment Modal */}
-        <Modal visible={paymentVisible} onDismiss={() => setPaymentVisible(false)} contentContainerStyle={styles.modalStyle}>
-          <Text variant="titleLarge" style={styles.modalTitle}>Record Payment</Text>
+        <Modal visible={paymentVisible} onDismiss={() => { setPaymentVisible(false); resetForms(); }} contentContainerStyle={styles.modalStyle}>
+          <Text variant="titleLarge" style={styles.modalTitle}>{editPaymentId ? 'Edit Payment' : 'Record Payment'}</Text>
           <DatePicker label="Date *" value={date} onChange={setDate} />
           
           <View style={styles.pickerContainer}>

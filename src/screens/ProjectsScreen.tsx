@@ -6,12 +6,17 @@ import { supabase } from '../services/supabase';
 import { Project, Client } from '../types/database';
 import DatePicker from '../components/DatePicker';
 import { useNavigation } from '@react-navigation/native';
+import { useAppStore } from '../store/useAppStore';
 
 export default function ProjectsScreen() {
   const navigation = useNavigation<any>();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  const setProjects = useAppStore(state => state.setProjects);
+  const addProject = useAppStore(state => state.addProject);
+  const setClients = useAppStore(state => state.setClients);
+  const projects = useAppStore(state => state.projects);
+  const clients = useAppStore(state => state.clients);
+
+  const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
   
   // Form state
@@ -24,7 +29,9 @@ export default function ProjectsScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    if (projects.length === 0 || clients.length === 0) {
+      fetchData();
+    }
   }, []);
 
   const fetchData = async () => {
@@ -54,7 +61,7 @@ export default function ProjectsScreen() {
     }
     
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('projects')
       .insert([
         { 
@@ -65,16 +72,16 @@ export default function ProjectsScreen() {
           description: description || null, 
           notes: notes || null 
         }
-      ]);
+      ]).select('*, client:clients(*)');
       
     setSaving(false);
     
     if (error) {
       console.error('Error saving project:', error);
       alert('Error saving project');
-    } else {
+    } else if (data && data.length > 0) {
+      addProject(data[0] as Project);
       hideModal();
-      fetchData();
     }
   };
 

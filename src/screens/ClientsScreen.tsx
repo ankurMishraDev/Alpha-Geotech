@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Text, FAB, Card, Modal, Portal, TextInput, Button, ActivityIndicator } from 'react-native-paper';
 import { supabase } from '../services/supabase';
 import { Client } from '../types/database';
+import { useAppStore } from '../store/useAppStore';
 
-export default function ClientsScreen() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ClientsScreen({ navigation }: any) {
+  const clients = useAppStore(state => state.clients);
+  const setClients = useAppStore(state => state.setClients);
+  const addClientStore = useAppStore(state => state.addClient);
+
+  const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
 
   // Form state
@@ -17,7 +21,9 @@ export default function ClientsScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchClients();
+    if (clients.length === 0) {
+      fetchClients();
+    }
   }, []);
 
   const fetchClients = async () => {
@@ -39,7 +45,7 @@ export default function ClientsScreen() {
     }
 
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('clients')
       .insert([
         {
@@ -48,16 +54,17 @@ export default function ClientsScreen() {
           company_address: address || null,
           email: email || null
         }
-      ]);
+      ])
+      .select();
 
     setSaving(false);
 
     if (error) {
       console.error('Error saving client:', error);
       alert('Error saving client');
-    } else {
+    } else if (data && data.length > 0) {
+      addClientStore(data[0] as Client);
       hideModal();
-      fetchClients();
     }
   };
 
@@ -71,13 +78,15 @@ export default function ClientsScreen() {
   };
 
   const renderItem = ({ item }: { item: Client }) => (
-    <Card style={styles.card}>
-      <Card.Title title={item.name} subtitle={item.email || 'No email provided'} />
-      <Card.Content>
-        <Text variant="bodyMedium">Contact: {item.contact_number || 'N/A'}</Text>
-        <Text variant="bodyMedium">Address: {item.company_address || 'N/A'}</Text>
-      </Card.Content>
-    </Card>
+    <TouchableOpacity onPress={() => navigation.navigate('ClientDetails', { client: item })}>
+      <Card style={styles.card}>
+        <Card.Title title={item.name} subtitle={item.email || 'No email provided'} />
+        <Card.Content>
+          <Text variant="bodyMedium">Contact: {item.contact_number || 'N/A'}</Text>
+          <Text variant="bodyMedium">Address: {item.company_address || 'N/A'}</Text>
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
   );
 
   return (
