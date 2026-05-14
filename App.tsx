@@ -1,6 +1,25 @@
-import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AppNavigator from './src/navigation/AppNavigator';
+// import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
+// import { SafeAreaProvider } from 'react-native-safe-area-context';
+// import AppNavigator from './src/navigation/AppNavigator';
+
+
+
+// export default function App() {
+//   return (
+//     <SafeAreaProvider>
+//       <PaperProvider theme={theme}>
+//         <AppNavigator />
+//       </PaperProvider>
+//     </SafeAreaProvider>
+//   );
+// }
+
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import { Text } from "react-native-paper";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { PaperProvider } from "react-native-paper";
+import { MD3LightTheme } from "react-native-paper";
 
 const theme = {
   ...MD3LightTheme,
@@ -23,13 +42,45 @@ const theme = {
   },
   roundness: 2, // 8px (default is 4, 4*2 = 8px)
 };
-
 export default function App() {
   return (
     <SafeAreaProvider>
       <PaperProvider theme={theme}>
-        <AppNavigator />
+        <View style={styles.container}>
+          <Text style={styles.code}>401</Text>
+          <Text style={styles.title}>Unauthorized</Text>
+          <Text style={styles.message}>
+            Access to this application is restricted.
+          </Text>
+        </View>
       </PaperProvider>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
+    padding: 20,
+  },
+  code: {
+    fontSize: 72,
+    fontWeight: "bold",
+    color: "#d32f2f",
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "600",
+    marginTop: 10,
+    color: "#333",
+  },
+  message: {
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 15,
+    color: "#555",
+  },
+});
